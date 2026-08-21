@@ -2,7 +2,7 @@
 
 ## List of Group 06 members
 
-| STT | Full Name | ID Student | Github Account | Task |
+| STT | Full Name | ID Student | Github Account | Task Week1 |
 |---|---|---|---|---|
 | 1 | Nguyen Duong Gia Khanh | 056307008420 | GKhanh557 | Design Phase (USER), Draw DFD |
 | 2 | Le Thai An | 095204000992 | Davvid357 | Requirements Analysis, Functional Requirements |
