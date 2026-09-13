@@ -1,0 +1,168 @@
+    # ==============================================================
+    # SCREEN 4: USER MAIN SCREEN  -  FR4-FR16
+    # ==============================================================
+    def show_user_screen(self):
+        self.clear_window()
+        self.selected_contact_id = None
+
+        top = tk.Frame(self.root)
+        top.pack(fill="x", padx=10, pady=8)
+        tk.Label(top, text=f"Logged in as: {self.current_user.username} (User)",
+                 font=("Arial", 11, "bold")).pack(side="left")
+        tk.Button(top, text="Logout", command=self.show_guest_screen).pack(side="right")
+
+        # ---- Search bar ----
+        search_frame = tk.Frame(self.root)
+        search_frame.pack(fill="x", padx=10)
+        tk.Label(search_frame, text="Search:").pack(side="left")
+        self.search_entry = tk.Entry(search_frame, width=30)
+        self.search_entry.pack(side="left", padx=5)
+        tk.Button(search_frame, text="Search", command=self.refresh_contact_table).pack(side="left")
+        tk.Button(search_frame, text="Show All", command=lambda: (self.search_entry.delete(0, tk.END), self.refresh_contact_table())).pack(side="left", padx=5)
+
+        # ---- Contact table ----
+        table_frame = tk.Frame(self.root)
+        table_frame.pack(padx=10, pady=8, fill="both", expand=True)
+
+        self.contact_table = ttk.Treeview(
+            table_frame, columns=("name", "phone", "email", "group", "fav"), show="headings", height=12
+        )
+        for col, label, width in [("name", "Full Name", 160), ("phone", "Phone", 110),
+                                   ("email", "Email", 170), ("group", "Group", 90), ("fav", "Favorite", 70)]:
+            self.contact_table.heading(col, text=label)
+            self.contact_table.column(col, width=width)
+        self.contact_table.pack(side="left", fill="both", expand=True)
+        self.contact_table.bind("<<TreeviewSelect>>", self.on_contact_selected)
+
+        # ---- Action buttons ----
+        btn_frame = tk.Frame(self.root)
+        btn_frame.pack(pady=8)
+        tk.Button(btn_frame, text="Add Contact", width=14, command=self.open_add_contact_form).grid(row=0, column=0, padx=4)
+        tk.Button(btn_frame, text="Edit Contact", width=14, command=self.open_edit_contact_form).grid(row=0, column=1, padx=4)
+        tk.Button(btn_frame, text="Delete Contact", width=14, command=self.delete_selected_contact).grid(row=0, column=2, padx=4)
+        tk.Button(btn_frame, text="Mark Favorite", width=14, command=self.toggle_favorite_selected).grid(row=0, column=3, padx=4)
+        tk.Button(btn_frame, text="Manage Groups", width=14, command=self.open_groups_window).grid(row=0, column=4, padx=4)
+        tk.Button(btn_frame, text="Import CSV", width=12, command=self.do_import_csv).grid(row=0, column=5, padx=4)
+        tk.Button(btn_frame, text="Export CSV", width=12, command=self.do_export_csv).grid(row=0, column=6, padx=4)
+
+        self.refresh_contact_table()
+
+    def refresh_contact_table(self):
+        keyword = self.search_entry.get().strip()
+        if keyword:
+            contacts = self.current_user.search_contact(keyword)
+        else:
+            contacts = self.current_user.view_contact_list()
+
+        for row in self.contact_table.get_children():
+            self.contact_table.delete(row)
+
+        for c in contacts:
+            self.contact_table.insert(
+                "", "end", iid=c["contact_id"],
+                values=(c["full_name"], c["phone_number"], c["email"] or "",
+                        c["group_name"] or "-", "Yes" if c["is_favorite"] else "No"),
+            )
+
+    def on_contact_selected(self, event):
+        selection = self.contact_table.selection()
+        self.selected_contact_id = int(selection[0]) if selection else None
+
+    def toggle_favorite_selected(self):
+        if not self.selected_contact_id:
+            messagebox.showwarning("No selection", "Please select a contact first.")
+            return
+        self.current_user.mark_favorite(self.selected_contact_id)
+        self.refresh_contact_table()
+
+    def delete_selected_contact(self):
+        if not self.selected_contact_id:
+            messagebox.showwarning("No selection", "Please select a contact first.")
+            return
+        if messagebox.askyesno("Confirm", "Delete this contact?"):
+            self.current_user.delete_contact(self.selected_contact_id)
+            self.selected_contact_id = None
+            self.refresh_contact_table()
+
+    def do_export_csv(self):
+        filepath = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+        if filepath:
+            count = self.current_user.export_contact(filepath)
+            messagebox.showinfo("Export complete", f"Exported {count} contact(s).")
+
+    def do_import_csv(self):
+        filepath = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+        if filepath:
+            imported, skipped = self.current_user.import_contact(filepath)
+            messagebox.showinfo("Import complete", f"Imported: {imported}, Skipped: {skipped}")
+            self.refresh_contact_table()
+
+    # ---- Add / Edit contact form (a separate small window) ----
+    def open_add_contact_form(self):
+        self._open_contact_form(editing=False)
+
+    def open_edit_contact_form(self):
+        if not self.selected_contact_id:
+            messagebox.showwarning("No selection", "Please select a contact first.")
+            return
+        self._open_contact_form(editing=True)
+
+    def _open_contact_form(self, editing):
+        existing = None
+        if editing:
+            for c in self.current_user.view_contact_list():
+                if c["contact_id"] == self.selected_contact_id:
+                    existing = c
+                    break
+
+        window = tk.Toplevel(self.root)
+        window.title("Edit Contact" if editing else "Add Contact")
+        window.geometry("350x380")
+
+        fields = {}
+        labels = ["Full Name", "Phone Number", "Email", "Address", "Note"]
+        keys = ["full_name", "phone_number", "email", "address", "note"]
+        for i, (label, key) in enumerate(zip(labels, keys)):
+            tk.Label(window, text=label + ":").pack(pady=(10 if i == 0 else 4, 0))
+            entry = tk.Entry(window, width=35)
+            if existing:
+                entry.insert(0, existing[key] or "")
+            entry.pack()
+            fields[key] = entry
+
+        tk.Label(window, text="Group:").pack(pady=(4, 0))
+        groups = self.current_user.view_group()
+        group_names = ["(No group)"] + [g["group_name"] for g in groups]
+        group_var = tk.StringVar(value="(No group)")
+        if existing and existing["group_name"]:
+            group_var.set(existing["group_name"])
+        group_dropdown = ttk.Combobox(window, textvariable=group_var, values=group_names, state="readonly", width=32)
+        group_dropdown.pack()
+
+        def save():
+            selected_group_id = None
+            if group_var.get() != "(No group)":
+                for g in groups:
+                    if g["group_name"] == group_var.get():
+                        selected_group_id = g["group_id"]
+
+            values = {k: e.get() for k, e in fields.items()}
+
+            if editing:
+                success, message = self.current_user.edit_contact(
+                    self.selected_contact_id, values["full_name"], values["phone_number"],
+                    values["email"], values["address"], values["note"], selected_group_id,
+                )
+            else:
+                success, message = self.current_user.add_contact(
+                    values["full_name"], values["phone_number"], values["email"],
+                    values["address"], values["note"], selected_group_id,
+                )
+
+            if success:
+                window.destroy()
+                self.refresh_contact_table()
+            else:
+                messagebox.showerror("Error", message)
+
+        tk.Button(window, text="Save", width=15, command=save).pack(pady=15)
